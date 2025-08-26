@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drug Interaction Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; }
+        .autocomplete-items div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #d4d4d4; }
+        .autocomplete-items div:hover { background-color: #e9e9e9; }
+        .autocomplete-active { background-color: DodgerBlue !important; color: #ffffff; }
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); z-index: 1; color: #000000; opacity: 0.08; font-size: 3.5rem; font-weight: 700; pointer-events: none; white-space: nowrap; }
+.signature {
+            position: fixed; /* Keeps it in place even when scrolling */
+            bottom: 1rem;    /* 16px from the bottom */
+            right: 1rem;     /* 16px from the right */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 0.875rem; /* 14px */
+            color: #6b7280;   /* A neutral gray color */
+            z-index: 50;       /* Ensures it stays on top of most other content */
+
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body style="margin:0; min-height:100vh; background: linear-gradient(to right, #13547a, #80d0c7);">
+    <div class="watermark">For Educational Use Only</div>
+    <div class="w-full max-w-lg mx-auto p-6 md:p-8" style="z-index: 2;">
+        <div class="bg-white rounded-2xl shadow-lg">
+            <div class="p-6 md:p-8">
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-800 text-center">Drug Interaction Checker</h1>
+                <p class="text-gray-500 text-center mt-2">Enter two drug names to check their potential interaction.</p>
+                <div class="mt-8 space-y-6">
+                    <div class="relative"><label for="drugA" class="text-sm font-medium text-gray-700">Drug A</label><input type="text" id="drugA" class="mt-1 block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Loading drug list..."></div>
+                    <div class="relative"><label for="drugB" class="text-sm font-medium text-gray-700">Drug B</label><input type="text" id="drugB" class="mt-1 block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Loading drug list..."></div>
+                    <button id="checkButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105" disabled>Check Interaction</button>
+                </div>
+            </div>
+            <div id="resultsBox" class="hidden p-6 md:p-8 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+                 <h2 class="text-xl font-bold text-gray-800 mb-4">Interaction Analysis</h2>
+                 <div id="resultContent" class="space-y-4">
+                    <div><p class="text-sm font-medium text-gray-500">Potential Risk Level</p><p id="riskLevel" class="text-2xl font-bold"></p></div>
+                    <div><p class="text-sm font-medium text-gray-500">Confidence Score</p><div class="w-full bg-gray-200 rounded-full h-2.5 mt-1"><div id="confidenceBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div></div><p id="confidenceText" class="text-right text-sm font-medium text-gray-600"></p></div>
+                    <div><p class="text-sm font-medium text-gray-500">Interaction Theme</p><p id="interactionTheme" class="text-lg font-semibold text-gray-800"></p></div>
+                    <div><p class="text-sm font-medium text-gray-500">Example Description from Dataset</p><p id="exampleDescription" class="text-gray-700 italic bg-gray-100 p-3 rounded-lg"></p></div>
+                 </div>
+                 <div id="errorContent" class="hidden text-center"><p class="text-lg font-semibold text-red-600">Error</p><p id="errorMessage" class="text-gray-500 mt-1"></p></div>
+            </div>
+        </div>
+        <p class="text-center text-gray-400 text-xs mt-6">Disclaimer: This tool is for informational purposes only and is not a substitute for professional medical advice.</p>
+    </div>
+
+    <script>
+        const drugAInput = document.getElementById('drugA');
+        const drugBInput = document.getElementById('drugB');
+        const checkButton = document.getElementById('checkButton');
+        const resultsBox = document.getElementById('resultsBox');
+        const resultContent = document.getElementById('resultContent');
+        const errorContent = document.getElementById('errorContent');
+        const errorMessage = document.getElementById('errorMessage');
+
+        const riskLevelEl = document.getElementById('riskLevel');
+        const confidenceBarEl = document.getElementById('confidenceBar');
+        const confidenceTextEl = document.getElementById('confidenceText');
+        const interactionThemeEl = document.getElementById('interactionTheme');
+        const exampleDescriptionEl = document.getElementById('exampleDescription');
+        
+        const API_URL = 'http://127.0.0.1:5000';
+
+        // --- FETCH DRUG LIST ON PAGE LOAD ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch(`${API_URL}/drugs`);
+                if (!response.ok) throw new Error('Could not connect to the backend server.');
+                
+                const knownDrugs = await response.json();
+                
+                drugAInput.placeholder = 'e.g., Aspirin';
+                drugBInput.placeholder = 'e.g., Warfarin';
+                checkButton.disabled = false;
+                
+                setupAutocomplete(drugAInput, knownDrugs);
+                setupAutocomplete(drugBInput, knownDrugs);
+
+            } catch (error) {
+                drugAInput.placeholder = 'Error loading drugs';
+                drugBInput.placeholder = 'Error loading drugs';
+                alert(`Failed to load drug list from the backend: ${error.message}`);
+            }
+        });
+
+        checkButton.addEventListener('click', async () => {
+            const drugA = drugAInput.value;
+            const drugB = drugBInput.value;
+
+            if (!drugA || !drugB) {
+                alert("Please enter both drug names.");
+                return;
+            }
+            
+            checkButton.disabled = true;
+            checkButton.textContent = 'Checking...';
+            resultsBox.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drug_a: drugA, drug_b: drugB })
+                });
+
+                const data = await response.json();
+                resultsBox.classList.remove('hidden');
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An unknown error occurred.');
+                }
+                
+                resultContent.classList.remove('hidden');
+                errorContent.classList.add('hidden');
+
+                const riskColors = { "High": "text-red-600", "Medium": "text-orange-600", "Low": "text-green-600" };
+                riskLevelEl.textContent = data.risk_level;
+                riskLevelEl.className = `text-2xl font-bold ${riskColors[data.risk_level] || 'text-gray-600'}`;
+                
+                confidenceBarEl.style.width = `${data.confidence}%`;
+                confidenceTextEl.textContent = `${parseFloat(data.confidence).toFixed(2)}%`;
+
+                interactionThemeEl.textContent = `${data.theme} (Cluster ${data.cluster_id})`;
+                exampleDescriptionEl.textContent = `"${data.example_description}"`;
+
+            } catch (error) {
+                resultsBox.classList.remove('hidden');
+                resultContent.classList.add('hidden');
+                errorContent.classList.remove('hidden');
+                errorMessage.textContent = error.message;
+            } finally {
+                checkButton.disabled = false;
+                checkButton.textContent = 'Check Interaction';
+            }
+        });
+
+        // ==============================================================================
+        // AUTOCOMPLETE LOGIC (FULL VERSION)
+        // ==============================================================================
+        function setupAutocomplete(inp, arr) {
+            let currentFocus;
+            inp.addEventListener("input", function(e) {
+                let a, b, i, val = this.value;
+                closeAllLists();
+                if (!val) { return false; }
+                currentFocus = -1;
+                a = document.createElement("DIV");
+                a.setAttribute("id", this.id + "autocomplete-list");
+                a.setAttribute("class", "autocomplete-items");
+                this.parentNode.appendChild(a);
+                for (i = 0; i < arr.length; i++) {
+                    if (arr[i].substr(0, val.length).toUpperCase() == val.toUpperCase()) {
+                        b = document.createElement("DIV");
+                        b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                        b.innerHTML += arr[i].substr(val.length);
+                        b.innerHTML += "<input type='hidden' value='" + arr[i] + "'>";
+                        b.addEventListener("click", function(e) {
+                            inp.value = this.getElementsByTagName("input")[0].value;
+                            closeAllLists();
+                        });
+                        a.appendChild(b);
+                    }
+                }
+            });
+            inp.addEventListener("keydown", function(e) {
+                let x = document.getElementById(this.id + "autocomplete-list");
+                if (x) x = x.getElementsByTagName("div");
+                if (e.keyCode == 40) { // Arrow DOWN
+                    currentFocus++;
+                    addActive(x);
+                } else if (e.keyCode == 38) { // Arrow UP
+                    currentFocus--;
+                    addActive(x);
+                } else if (e.keyCode == 13) { // Enter
+                    e.preventDefault();
+                    if (currentFocus > -1) {
+                        if (x) x[currentFocus].click();
+                    }
+                }
+            });
+            function addActive(x) {
+                if (!x) return false;
+                removeActive(x);
+                if (currentFocus >= x.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (x.length - 1);
+                x[currentFocus].classList.add("autocomplete-active");
+            }
+            function removeActive(x) {
+                for (let i = 0; i < x.length; i++) {
+                    x[i].classList.remove("autocomplete-active");
+                }
+            }
+            function closeAllLists(elmnt) {
+                const x = document.getElementsByClassName("autocomplete-items");
+                for (let i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != inp) {
+                        x[i].parentNode.removeChild(x[i]);
+                    }
+                }
+            }
+            document.addEventListener("click", function (e) {
+                closeAllLists(e.target);
+            });
+        }
+    </script>
+   <!-- This is the signature element -->
+    <div class="signature">
+        Created by 100
+    </div>
+
+</body>
+</html>
